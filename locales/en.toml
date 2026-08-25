@@ -1,0 +1,69 @@
+[ui]
+title = "EML Triage Dashboard"
+path = "File Path"
+path_ph = "C:\\Investigation\\phishing.eml"
+scan = "Analyze"
+summary = "Triage Summary"
+score = "Risk Score"
+score_low = "Low Risk"
+score_med = "Suspicious"
+score_high = "High Risk"
+view_iocs = "View IoCs"
+view_atts = "View Attachments"
+back = "Back to Dashboard"
+triggers = "Risk Triggers"
+no_triggers = "No risk triggers detected."
+browse = "Browse..."
+simple_safe = "SAFE (Can be opened)"
+simple_warn = "CAUTION (Suspicious)"
+simple_danger = "FORBIDDEN (Malicious)"
+details = "Technical Details"
+cert_msg = "Please contact your organization's security administrator or CERT-UA:"
+cert_contacts = "cert@cert.gov.ua\nincidents@cert.gov.ua\nMon - Thu: 8:00 - 17:00, Fri: 8:00 - 15:45:\n+38 (044) 281-88-25\n+38 (044) 281-88-05\nWeekends & Holidays (24/7):\n+38 (044) 281-88-01"
+cert_pgp = "PGP cert@: 0xB9E60C869CD61EDB (9F3F A615 1B11 89C0 E5D4 00C7 B9E6 0C86 9CD6 1EDB)\nPGP incidents@: 0x4B572C389C069842 (9A94 CF4E 2B98 1893 62EB B80F 4B57 2C38 9C06 9842)"
+
+[headers]
+title = "Headers & Auth"
+subject = "Subject:"
+from = "From:"
+spoofed = "Spoofing Detected"
+spf = "SPF"
+dkim = "DKIM"
+dmarc = "DMARC"
+
+[iocs]
+title = "Indicators of Compromise"
+empty = "No IoCs found in text body."
+
+[atts]
+title = "Attachments"
+filename = "Filename"
+size = "Size"
+hash = "MD5"
+note = "Note"
+
+[menu]
+save = "Save to disk"
+strings = "Extract Strings"
+reputation = "Check OSINT"
+check_eml = "Check EML Hash"
+
+[reasons]
+spf = "SPF check failed"
+dkim = "DKIM check failed"
+spoof = "Domain spoofing detected"
+atts = "Suspicious/executable attachments"
+psycho = "Social engineering keywords detected"
+html = "HTML anomalies (hidden text, link mismatch)"
+crypto = "Cryptocurrency wallets found"
+enc_zip = "Encrypted ZIP archive found"
+pwd_arc = "CRITICAL: Archive + Password keyword found"
+double_ext = "CRITICAL: Double extension detected"
+macro = "CRITICAL: Office Macro detected"
+
+[errors]
+empty = "Path cannot be empty."
+not_found = "Item not found."
+fs_success = "Saved as:"
+fs_error = "Write error:"
+decode = "Decode error:"

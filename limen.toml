@@ -1,0 +1,20 @@
+[module]
+name = "eml-analyzer"
+display_name = "EML Analyzer"
+description = "Deep static analysis and triage of .eml (email) files. Uncovers hidden payloads, bypasses MIME obfuscation, and scores threats using a SpamAssassin-lite heuristic engine."
+version = "0.3.2"
+language = "native"
+entry = "eml_analyzer"
+abi = "native"
+authors = ["Limen"]
+repo = "CRC-BARRACUDA/limen-eml-analyzer"
+tags = ["limen", "security", "email", "phishing", "forensics", "dfir", "local"]
+
+[provides]
+capabilities = ["eml.triage"]
+
+[optional.capabilities]
+"osint.reputation" = ">=0.1"
+
+[permissions]
+filesystem = ["<user-selected>"]
