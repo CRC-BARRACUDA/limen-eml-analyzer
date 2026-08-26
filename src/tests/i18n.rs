@@ -9,7 +9,14 @@ fn ukrainian_covers_every_english_key() {
     let missing: Vec<&String> = en.iter().filter(|k| !uk.contains(k)).collect();
     assert!(missing.is_empty(), "Ukrainian is missing: {missing:?}");
 
-    let extra: Vec<&String> = uk.iter().filter(|k| !en.contains(k)).collect();
+    // `[module]` is the exception, and deliberately one-sided: it is the card's
+    // name and description in the manager, read by the *host* rather than by
+    // this module, and the host falls back to limen.toml for English. An entry
+    // there would never be read.
+    let extra: Vec<&String> = uk
+        .iter()
+        .filter(|k| !en.contains(k) && !k.starts_with("module."))
+        .collect();
     assert!(extra.is_empty(), "Ukrainian defines what English does not: {extra:?}");
 }
 
@@ -112,4 +119,28 @@ fn the_parser_names_no_note_the_catalog_lacks() {
         found += 1;
     }
     assert!(found >= 9, "only found {found} notes in the parser");
+}
+
+/// The manager's card, in Ukrainian. Without these the module sits in a
+/// Ukrainian list introducing itself in English, which is how it shipped.
+#[test]
+fn the_card_speaks_ukrainian() {
+    let uk = include_str!("../../locales/uk.toml");
+    // The section, by its own line — a comment mentioning `[module]` is not it.
+    let card: Vec<&str> = uk
+        .lines()
+        .skip_while(|l| l.trim() != "[module]")
+        .skip(1)
+        .take_while(|l| !l.trim_start().starts_with('['))
+        .collect();
+    assert!(!card.is_empty(), "no [module] section — the card falls back to limen.toml");
+    let card = card.join("\n");
+    for field in ["title", "description"] {
+        assert!(card.contains(&format!("{field} = ")), "the card has no {field}");
+    }
+    // ...and in Ukrainian, not a copy of the English left behind.
+    assert!(
+        card.contains('\u{456}') || card.contains('\u{430}'),
+        "the card's text is not Ukrainian: {card}"
+    );
 }

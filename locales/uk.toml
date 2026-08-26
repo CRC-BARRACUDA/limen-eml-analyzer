@@ -1,3 +1,11 @@
+# The module's own card in the manager: the name and the sentence under it.
+# Read by the host (limen_proto::manifest::localized_title / _description), not
+# by this module — which is why they live under [module] rather than [ui], and
+# why English is absent: the host falls back to limen.toml for that.
+[module]
+title = "Аналізатор EML"
+description = "Глибокий статичний аналіз і тріаж файлів .eml. Знаходить приховані навантаження, розкриває MIME-обфускацію та оцінює загрозу евристикою в стилі SpamAssassin."
+
 [ui]
 title = "Дашборд аналізу EML"
 path = "Шлях до файлу"
