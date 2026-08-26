@@ -14,10 +14,29 @@ fn catalog() -> &'static Catalog {
     static C: OnceLock<Catalog> = OnceLock::new();
     C.get_or_init(|| {
         Catalog::new(&[
-            ("en", include_str!("locales/en.toml")),
-            ("uk", include_str!("locales/uk.toml")),
+            ("en", include_str!("../locales/en.toml")),
+            ("uk", include_str!("../locales/uk.toml")),
         ])
     })
+}
+
+/// Reduce the name an attachment gives itself to a bare file name.
+///
+/// `Content-Disposition: filename=` is written by whoever sent the message, so
+/// it is hostile input: it can carry directory components
+/// (`../../.config/autostart/x.desktop`), separators of either platform, or
+/// control characters that hide the real extension. Keep the last component
+/// only, and never hand back something empty for the save dialog to start from.
+fn safe_name(declared: &str) -> String {
+    let base = declared.rsplit(['/', '\\']).next().unwrap_or("");
+    let cleaned: String = base
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect();
+    match cleaned.trim() {
+        "" | "." | ".." => "dump.bin".to_string(),
+        name => name.to_string(),
+    }
 }
 
 #[derive(Default)]
@@ -61,6 +80,25 @@ impl EmlAnalyzer {
         )
     }
 
+    /// Shown when a view that needs a parsed message is reached before there is
+    /// one. `last_scan` stays `Null` until `scan` succeeds, and any method can
+    /// be invoked at any time — a tab restored on start-up, `limen-cli run
+    /// eml.triage dashboard`. This used to be an `unwrap()`, and a panic cannot
+    /// unwind out of the `extern "C"` entry point: it aborted the host process,
+    /// taking every other tab down with it.
+    fn no_scan_view(&self, lang: &str) -> Value {
+        let t = |k: &str| catalog().tr(lang, k);
+        window(
+            t("ui.title"),
+            vec![
+                label(t("errors.no_scan")).strong(),
+                separator(),
+                file("file_path").label(t("ui.path")).browse(t("ui.browse")),
+                button(t("ui.scan"), "eml.triage", "scan").primary(),
+            ],
+        )
+    }
+
     fn scan(&mut self, params: &Value, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         let path = params.get("file_path").and_then(Value::as_str).unwrap_or("");
@@ -87,7 +125,9 @@ impl EmlAnalyzer {
     fn render_simple_summary(&self, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         
-        let scoring = self.last_scan.get("scoring").unwrap();
+        let Some(scoring) = self.last_scan.get("scoring") else {
+            return self.no_scan_view(lang);
+        };
         let score = scoring.get("score").and_then(Value::as_u64).unwrap_or(0);
         
         let (verdict_text, verdict_state) = match score {
@@ -118,7 +158,9 @@ impl EmlAnalyzer {
     fn render_dashboard(&self, has_osint: bool, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         
-        let scoring = self.last_scan.get("scoring").unwrap();
+        let Some(scoring) = self.last_scan.get("scoring") else {
+            return self.no_scan_view(lang);
+        };
         let score = scoring.get("score").and_then(Value::as_u64).unwrap_or(0);
         let triggers = scoring.get("triggers").and_then(Value::as_array).unwrap_or(&vec![]).clone();
         
@@ -128,7 +170,9 @@ impl EmlAnalyzer {
             _ => (t("ui.score_high"), "error"),
         };
 
-        let headers = self.last_scan.get("headers").unwrap();
+        let Some(headers) = self.last_scan.get("headers") else {
+            return self.no_scan_view(lang);
+        };
         let subj = headers.get("subject").and_then(Value::as_str).unwrap_or("");
         let from = headers.get("from").and_then(Value::as_str).unwrap_or("");
         
@@ -302,21 +346,69 @@ impl EmlAnalyzer {
         let has_osint = host.has_capability("osint.reputation");
         let current_view = self.view_atts(has_osint, lang);
         
-        if let Some(att) = self.last_attachments.get(id) {
-            let filename = att.get("filename").and_then(Value::as_str).unwrap_or("dump.bin");
-            let b64 = att.get("body_b64").and_then(Value::as_str).unwrap_or("");
-            
-            match STANDARD.decode(b64) {
-                Ok(bytes) => match std::fs::write(filename, bytes) {
-                    Ok(_) => notice(current_view, "ok", format!("{} {}", t("errors.fs_success"), filename)),
-                    Err(e) => notice(current_view, "error", format!("{} {}", t("errors.fs_error"), e)),
-                },
-                Err(e) => notice(current_view, "error", format!("{} {}", t("errors.decode"), e)),
+        let Some(att) = self.last_attachments.get(id) else {
+            return notice(current_view, "error", t("errors.not_found"));
+        };
+
+        // Decode before asking where to put it — no reason to raise a dialog
+        // for bytes that cannot be written.
+        let b64 = att.get("body_b64").and_then(Value::as_str).unwrap_or("");
+        let bytes = match STANDARD.decode(b64) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return notice(current_view, "error", format!("{} {}", t("errors.decode"), e));
             }
-        } else {
-            notice(current_view, "error", t("errors.not_found"))
+        };
+
+        // The attachment does not choose where it lands. Its declared name is
+        // only a suggestion for the dialog; the path written is the one the
+        // user picked, which is what `filesystem = ["<user-selected>"]` in
+        // limen.toml promises. `None` means they cancelled.
+        let declared = att.get("filename").and_then(Value::as_str).unwrap_or("dump.bin");
+        let Some(dest) = host.save_file(&safe_name(declared)) else {
+            return notice(current_view, "warning", t("errors.fs_cancelled"));
+        };
+
+        match std::fs::write(&dest, bytes) {
+            Ok(_) => notice(current_view, "ok", format!("{} {}", t("errors.fs_success"), dest)),
+            Err(e) => notice(current_view, "error", format!("{} {}", t("errors.fs_error"), e)),
         }
     }
 }
 
 export_module!(EmlAnalyzer);
+
+#[cfg(test)]
+mod tests {
+    use super::safe_name;
+
+    #[test]
+    fn strips_every_directory_component() {
+        assert_eq!(safe_name("../../.config/autostart/x.desktop"), "x.desktop");
+        assert_eq!(safe_name("..\\..\\Startup\\x.exe"), "x.exe");
+        assert_eq!(safe_name("/etc/cron.d/payload"), "payload");
+        assert_eq!(safe_name("C:\\Windows\\System32\\evil.dll"), "evil.dll");
+    }
+
+    #[test]
+    fn falls_back_when_nothing_usable_is_left() {
+        for declared in ["", ".", "..", "   ", "../", "\\", "<>|"] {
+            assert_eq!(safe_name(declared), "dump.bin", "{declared:?}");
+        }
+    }
+
+    #[test]
+    fn drops_characters_that_hide_the_real_name() {
+        // A NUL or a newline can truncate the name where it is displayed, so
+        // the extension the analyst reads is not the one written to disk.
+        assert_eq!(safe_name("invoice.pdf\u{0}.exe"), "invoice.pdf.exe");
+        assert_eq!(safe_name("report\r\n.doc"), "report.doc");
+        assert_eq!(safe_name("a:b*c?.bin"), "abc.bin");
+    }
+
+    #[test]
+    fn an_ordinary_name_is_left_alone() {
+        assert_eq!(safe_name("invoice.pdf"), "invoice.pdf");
+        assert_eq!(safe_name("\u{417}\u{432}\u{456}\u{442}.docx"), "\u{417}\u{432}\u{456}\u{442}.docx");
+    }
+}
