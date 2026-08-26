@@ -1,13 +1,16 @@
+# Standalone package (it lives inside the Limen repo tree but is its own module).
+[workspace]
+
 [package]
 name = "eml-analyzer"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2021"
 description = "Deep static analysis and triage of .eml files for Limen DFIR."
 repository = "https://github.com/CRC-BARRACUDA/limen-eml-analyzer"
+license = "GPL-3.0-or-later"
 
 [lib]
 name = "eml_analyzer"
-path = "lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]

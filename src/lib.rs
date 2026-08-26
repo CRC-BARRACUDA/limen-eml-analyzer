@@ -14,10 +14,29 @@ fn catalog() -> &'static Catalog {
     static C: OnceLock<Catalog> = OnceLock::new();
     C.get_or_init(|| {
         Catalog::new(&[
-            ("en", include_str!("locales/en.toml")),
-            ("uk", include_str!("locales/uk.toml")),
+            ("en", include_str!("../locales/en.toml")),
+            ("uk", include_str!("../locales/uk.toml")),
         ])
     })
+}
+
+/// Reduce the name an attachment gives itself to a bare file name.
+///
+/// `Content-Disposition: filename=` is written by whoever sent the message, so
+/// it is hostile input: it can carry directory components
+/// (`../../.config/autostart/x.desktop`), separators of either platform, or
+/// control characters that hide the real extension. Keep the last component
+/// only, and never hand back something empty for the save dialog to start from.
+fn safe_name(declared: &str) -> String {
+    let base = declared.rsplit(['/', '\\']).next().unwrap_or("");
+    let cleaned: String = base
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect();
+    match cleaned.trim() {
+        "" | "." | ".." => "dump.bin".to_string(),
+        name => name.to_string(),
+    }
 }
 
 #[derive(Default)]
@@ -61,12 +80,31 @@ impl EmlAnalyzer {
         )
     }
 
+    /// Shown when a view that needs a parsed message is reached before there is
+    /// one. `last_scan` stays `Null` until `scan` succeeds, and any method can
+    /// be invoked at any time — a tab restored on start-up, `limen-cli run
+    /// eml.triage dashboard`. This used to be an `unwrap()`, and a panic cannot
+    /// unwind out of the `extern "C"` entry point: it aborted the host process,
+    /// taking every other tab down with it.
+    fn no_scan_view(&self, lang: &str) -> Value {
+        let t = |k: &str| catalog().tr(lang, k);
+        window(
+            t("ui.title"),
+            vec![
+                label(t("errors.no_scan")).strong(),
+                separator(),
+                file("file_path").label(t("ui.path")).browse(t("ui.browse")),
+                button(t("ui.scan"), "eml.triage", "scan").primary(),
+            ],
+        )
+    }
+
     fn scan(&mut self, params: &Value, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         let path = params.get("file_path").and_then(Value::as_str).unwrap_or("");
         
         if path.is_empty() {
-            return window("Error", vec![label(t("errors.empty")).strong()]);
+            return window(t("ui.error"), vec![label(t("errors.empty")).strong()]);
         }
 
         match parser::parse(path) {
@@ -80,14 +118,16 @@ impl EmlAnalyzer {
                 }
                 self.render_simple_summary(lang)
             },
-            Err(e) => window("Error", vec![label(e).strong()]),
+            Err(e) => window(t("ui.error"), vec![label(e).strong()]),
         }
     }
 
     fn render_simple_summary(&self, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         
-        let scoring = self.last_scan.get("scoring").unwrap();
+        let Some(scoring) = self.last_scan.get("scoring") else {
+            return self.no_scan_view(lang);
+        };
         let score = scoring.get("score").and_then(Value::as_u64).unwrap_or(0);
         
         let (verdict_text, verdict_state) = match score {
@@ -118,7 +158,9 @@ impl EmlAnalyzer {
     fn render_dashboard(&self, has_osint: bool, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         
-        let scoring = self.last_scan.get("scoring").unwrap();
+        let Some(scoring) = self.last_scan.get("scoring") else {
+            return self.no_scan_view(lang);
+        };
         let score = scoring.get("score").and_then(Value::as_u64).unwrap_or(0);
         let triggers = scoring.get("triggers").and_then(Value::as_array).unwrap_or(&vec![]).clone();
         
@@ -128,7 +170,9 @@ impl EmlAnalyzer {
             _ => (t("ui.score_high"), "error"),
         };
 
-        let headers = self.last_scan.get("headers").unwrap();
+        let Some(headers) = self.last_scan.get("headers") else {
+            return self.no_scan_view(lang);
+        };
         let subj = headers.get("subject").and_then(Value::as_str).unwrap_or("");
         let from = headers.get("from").and_then(Value::as_str).unwrap_or("");
         
@@ -196,7 +240,7 @@ impl EmlAnalyzer {
             if iocs.is_empty() {
                 widgets.push(label(t("iocs.empty")).weak());
             } else {
-                let cols = vec!["Indicator".to_string()];
+                let cols = vec![t("iocs.indicator")];
                 let mut rows = Vec::new();
                 let mut row_ids = Vec::new();
                 
@@ -216,6 +260,26 @@ impl EmlAnalyzer {
         window(t("iocs.title"), widgets)
     }
 
+    /// An attachment's note, as the analyst reads it.
+    ///
+    /// The parser has no locale, so it names a key and — where it found a name
+    /// inside the file — passes it along. `{}` in the translation is where that
+    /// name goes.
+    fn note_text(&self, note: Option<&Value>, lang: &str) -> String {
+        match note {
+            Some(n) if n.is_object() => {
+                let text = catalog().tr(lang, n.get("key").and_then(Value::as_str).unwrap_or(""));
+                match n.get("arg").and_then(Value::as_str) {
+                    Some(arg) => text.replace("{}", arg),
+                    None => text,
+                }
+            }
+            // A scan taken before this build, still held in the tab's state.
+            Some(Value::String(s)) => s.clone(),
+            _ => String::new(),
+        }
+    }
+
     fn view_atts(&self, has_osint: bool, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         let mut widgets = vec![
@@ -225,7 +289,7 @@ impl EmlAnalyzer {
             separator()
         ];
         
-        let cols = vec![t("atts.filename").into(), t("atts.size").into(), t("atts.hash").into(), t("atts.note").into()];
+        let cols = vec![t("atts.filename"), t("atts.size"), t("atts.hash"), t("atts.note")];
         let mut rows = Vec::new();
         let mut row_ids = Vec::new();
 
@@ -235,7 +299,7 @@ impl EmlAnalyzer {
                     att.get("filename").and_then(Value::as_str).unwrap_or("").to_string(),
                     att.get("size").and_then(Value::as_u64).unwrap_or(0).to_string(),
                     att.get("hash").and_then(Value::as_str).unwrap_or("").to_string(),
-                    att.get("note").and_then(Value::as_str).unwrap_or("").to_string(),
+                    self.note_text(att.get("note"), lang),
                 ]);
                 row_ids.push(i.to_string());
             }
@@ -259,16 +323,16 @@ impl EmlAnalyzer {
             let b64 = att.get("body_b64").and_then(Value::as_str).unwrap_or("");
             match STANDARD.decode(b64) {
                 Ok(bytes) => {
-                    let mut widgets = vec![label("Strings").heading(), separator()];
+                    let mut widgets = vec![label(t("ui.strings")).heading(), separator()];
                     let extracted = parser::extract_strings(&bytes);
                     let joined = extracted.into_iter().take(1000).collect::<Vec<String>>().join("\n");
                     widgets.push(label(joined).mono()); 
-                    window("Output", widgets)
+                    window(t("ui.output"), widgets)
                 },
-                Err(e) => window("Error", vec![label(format!("{} {}", t("errors.decode"), e)).strong()]),
+                Err(e) => window(t("ui.error"), vec![label(format!("{} {}", t("errors.decode"), e)).strong()]),
             }
         } else {
-            window("Error", vec![label(t("errors.not_found")).strong()])
+            window(t("ui.error"), vec![label(t("errors.not_found")).strong()])
         }
     }
 
@@ -287,11 +351,25 @@ impl EmlAnalyzer {
             } else { "" }
         } else { "" };
 
-        if hash.is_empty() { return window("Error", vec![label(t("errors.not_found")).strong()]); }
+        if hash.is_empty() { return window(t("ui.error"), vec![label(t("errors.not_found")).strong()]); }
         
         match host.call("osint.reputation", "check_hash", json!({ "hash": hash })) {
-            Ok(res) => res,
-            Err(e) => window("Error", vec![label(format!("OSINT: {}", e)).weak()]),
+            // The provider answers with a screen of its own — show it as it is.
+            Ok(res) if res.get("widgets").is_some() => res,
+            // ...or with nothing, which used to render as an empty window: the
+            // analyst clicked "Check OSINT" and the screen went blank, which
+            // reads as "clean" when it means "no answer".
+            Ok(res) if res.is_null() => notice(
+                self.view_atts(true, lang),
+                "warning",
+                t("errors.osint_empty"),
+            ),
+            // Anything else is data without a screen: show it rather than drop it.
+            Ok(res) => window(
+                t("menu.reputation"),
+                vec![label(res.to_string()).mono()],
+            ),
+            Err(e) => window(t("ui.error"), vec![label(format!("OSINT: {}", e)).weak()]),
         }
     }
 
@@ -302,21 +380,38 @@ impl EmlAnalyzer {
         let has_osint = host.has_capability("osint.reputation");
         let current_view = self.view_atts(has_osint, lang);
         
-        if let Some(att) = self.last_attachments.get(id) {
-            let filename = att.get("filename").and_then(Value::as_str).unwrap_or("dump.bin");
-            let b64 = att.get("body_b64").and_then(Value::as_str).unwrap_or("");
-            
-            match STANDARD.decode(b64) {
-                Ok(bytes) => match std::fs::write(filename, bytes) {
-                    Ok(_) => notice(current_view, "ok", format!("{} {}", t("errors.fs_success"), filename)),
-                    Err(e) => notice(current_view, "error", format!("{} {}", t("errors.fs_error"), e)),
-                },
-                Err(e) => notice(current_view, "error", format!("{} {}", t("errors.decode"), e)),
+        let Some(att) = self.last_attachments.get(id) else {
+            return notice(current_view, "error", t("errors.not_found"));
+        };
+
+        // Decode before asking where to put it — no reason to raise a dialog
+        // for bytes that cannot be written.
+        let b64 = att.get("body_b64").and_then(Value::as_str).unwrap_or("");
+        let bytes = match STANDARD.decode(b64) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return notice(current_view, "error", format!("{} {}", t("errors.decode"), e));
             }
-        } else {
-            notice(current_view, "error", t("errors.not_found"))
+        };
+
+        // The attachment does not choose where it lands. Its declared name is
+        // only a suggestion for the dialog; the path written is the one the
+        // user picked, which is what `filesystem = ["<user-selected>"]` in
+        // limen.toml promises. `None` means they cancelled.
+        let declared = att.get("filename").and_then(Value::as_str).unwrap_or("dump.bin");
+        let Some(dest) = host.save_file(&safe_name(declared)) else {
+            return notice(current_view, "warning", t("errors.fs_cancelled"));
+        };
+
+        match std::fs::write(&dest, bytes) {
+            Ok(_) => notice(current_view, "ok", format!("{} {}", t("errors.fs_success"), dest)),
+            Err(e) => notice(current_view, "error", format!("{} {}", t("errors.fs_error"), e)),
         }
     }
 }
 
 export_module!(EmlAnalyzer);
+
+
+#[cfg(test)]
+mod tests;

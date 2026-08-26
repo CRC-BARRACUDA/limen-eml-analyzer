@@ -1,3 +1,11 @@
+# The module's own card in the manager: the name and the sentence under it.
+# Read by the host (limen_proto::manifest::localized_title / _description), not
+# by this module — which is why they live under [module] rather than [ui], and
+# why English is absent: the host falls back to limen.toml for that.
+[module]
+title = "Аналізатор EML"
+description = "Глибокий статичний аналіз і тріаж файлів .eml. Знаходить приховані навантаження, розкриває MIME-обфускацію та оцінює загрозу евристикою в стилі SpamAssassin."
+
 [ui]
 title = "Дашборд аналізу EML"
 path = "Шлях до файлу"
@@ -14,6 +22,9 @@ back = "Повернутися до дашборду"
 triggers = "Тригери ризику"
 no_triggers = "Тригерів ризику не виявлено."
 browse = "Огляд..."
+error = "Помилка"
+output = "Вивід"
+strings = "Рядки"
 simple_safe = "МОЖНА ВІДКРИВАТИ"
 simple_warn = "ОБЕРЕЖНО (Підозрілий файл)"
 simple_danger = "ЗАБОРОНЕНО (Шкідливий файл)"
@@ -34,6 +45,7 @@ dmarc = "DMARC"
 [iocs]
 title = "Індикатори компрометації"
 empty = "IoC у тексті не знайдено."
+indicator = "Індикатор"
 
 [atts]
 title = "Вкладення"
@@ -67,3 +79,17 @@ not_found = "Елемент не знайдено."
 fs_success = "Збережено як:"
 fs_error = "Помилка запису:"
 decode = "Помилка декодування:"
+no_scan = "Ще немає проаналізованого листа. Оберіть файл .eml і натисніть «Аналізувати»."
+fs_cancelled = "Збереження скасовано."
+osint_empty = "Постачальник репутації нічого не повернув — це не означає, що файл чистий."
+
+[notes]
+ok = "OK"
+exe = "ПІДОЗРІЛО (Виконуваний файл)"
+double_ext = "ПІДОЗРІЛО (Подвійне розширення)"
+macro_format = "ПІДОЗРІЛО (Формат із макросами)"
+legacy_office = "УВАГА (Застарілий формат Office)"
+enc_zip = "УВАГА (Зашифрований ZIP)"
+macro = "КРИТИЧНО (Виявлено макрос Office)"
+hidden = "ПІДОЗРІЛО (Приховано: {})"
+in_archive = "ПІДОЗРІЛО (В архіві: {})"

@@ -53,8 +53,18 @@ pub fn parse(path: &str) -> Result<Value, String> {
     process_part(&parsed_mail, &mut state);
 
     let scoring_data = scoring::calculate(
-        &header_data, state.bad_attachments, state.has_double_ext, state.total_psycho_words, 
-        state.html_anomalies, state.has_crypto, state.has_archive, state.is_encrypted_zip, state.has_pwd_keyword, state.has_macro
+        &header_data,
+        &scoring::Signals {
+            bad_attachments: state.bad_attachments,
+            has_double_ext: state.has_double_ext,
+            psycho_words: state.total_psycho_words,
+            html_anomalies: state.html_anomalies,
+            has_crypto: state.has_crypto,
+            has_archive: state.has_archive,
+            is_encrypted_zip: state.is_encrypted_zip,
+            has_pwd_keyword: state.has_pwd_keyword,
+            has_macro: state.has_macro,
+        },
     );
 
     Ok(json!({
@@ -105,24 +115,27 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
             }
         }
 
-        let mut note = String::from("OK");
+        // A key rather than a sentence: `parser` has no locale, and the note
+        // is the cell the analyst actually reads. `view_atts` translates it,
+        // exactly as the dashboard translates `scoring`'s reasons.
+        let mut note = json!({ "key": "notes.ok" });
         
         if is_double {
-            note = "SUSPICIOUS (Double Ext)".to_string();
+            note = json!({ "key": "notes.double_ext" });
             state.bad_attachments += 1;
             state.has_double_ext = true;
         } else if has_dangerous_ext {
-            note = "SUSPICIOUS (Executable)".to_string();
+            note = json!({ "key": "notes.exe" });
             state.bad_attachments += 1;
         } else if has_office_ext && lower_name.ends_with("m") {
-            note = "SUSPICIOUS (Macro-enabled Format)".to_string();
+            note = json!({ "key": "notes.macro_format" });
             state.bad_attachments += 1;
             state.has_macro = true;
         } else if has_office_ext {
-            note = "WARNING (Legacy Office Format)".to_string();
+            note = json!({ "key": "notes.legacy_office" });
             state.bad_attachments += 1;
         } else if state.is_encrypted_zip {
-            note = "WARNING (Encrypted ZIP)".to_string();
+            note = json!({ "key": "notes.enc_zip" });
         } else {
             let mut found_in_zip = false;
             
@@ -133,7 +146,7 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
                         if let Ok(file) = archive.by_index(i) {
                             let inner_name = file.name().to_lowercase();
                             if inner_name.contains("vbaproject.bin") {
-                                note = "CRITICAL (Office Macro Detected)".to_string();
+                                note = json!({ "key": "notes.macro" });
                                 state.bad_attachments += 1;
                                 state.has_macro = true;
                                 found_in_zip = true;
@@ -141,7 +154,7 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
                             }
                             for ext in &dangerous_exts {
                                 if inner_name.ends_with(ext) || inner_name.contains(&format!("{} ", ext)) {
-                                    note = format!("SUSPICIOUS (Hidden: {})", file.name());
+                                    note = json!({ "key": "notes.hidden", "arg": file.name() });
                                     state.bad_attachments += 1;
                                     state.has_double_ext = true;
                                     found_in_zip = true;
@@ -159,7 +172,7 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
                 for s in inner_strings {
                     let sl = s.to_lowercase();
                     if sl.contains(".pdf.lnk") || sl.contains(".doc.lnk") || sl.contains(".pdf.exe") || sl.contains("..exe") {
-                        note = format!("SUSPICIOUS (Hidden: {})", s);
+                        note = json!({ "key": "notes.hidden", "arg": s });
                         state.bad_attachments += 1;
                         state.has_double_ext = true;
                         break;
@@ -167,7 +180,7 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
                     if state.has_archive {
                         for ext in &dangerous_exts {
                             if sl.ends_with(ext) || sl.contains(&format!("{} ", ext)) || sl.contains(&format!("{}\"", ext)) {
-                                note = format!("SUSPICIOUS (Archive contains: {})", s);
+                                note = json!({ "key": "notes.in_archive", "arg": s });
                                 state.bad_attachments += 1;
                                 state.has_double_ext = true;
                                 found_in_zip = true;
