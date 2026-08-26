@@ -1,3 +1,6 @@
+# Standalone package (it lives inside the Limen repo tree but is its own module).
+[workspace]
+
 [package]
 name = "eml-analyzer"
 version = "0.3.2"
@@ -7,7 +10,6 @@ repository = "https://github.com/CRC-BARRACUDA/limen-eml-analyzer"
 
 [lib]
 name = "eml_analyzer"
-path = "lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
