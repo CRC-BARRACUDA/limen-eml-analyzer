@@ -53,8 +53,18 @@ pub fn parse(path: &str) -> Result<Value, String> {
     process_part(&parsed_mail, &mut state);
 
     let scoring_data = scoring::calculate(
-        &header_data, state.bad_attachments, state.has_double_ext, state.total_psycho_words, 
-        state.html_anomalies, state.has_crypto, state.has_archive, state.is_encrypted_zip, state.has_pwd_keyword, state.has_macro
+        &header_data,
+        &scoring::Signals {
+            bad_attachments: state.bad_attachments,
+            has_double_ext: state.has_double_ext,
+            psycho_words: state.total_psycho_words,
+            html_anomalies: state.html_anomalies,
+            has_crypto: state.has_crypto,
+            has_archive: state.has_archive,
+            is_encrypted_zip: state.is_encrypted_zip,
+            has_pwd_keyword: state.has_pwd_keyword,
+            has_macro: state.has_macro,
+        },
     );
 
     Ok(json!({

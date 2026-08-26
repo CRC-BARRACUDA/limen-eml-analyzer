@@ -1,17 +1,36 @@
 use limen_sdk_rust::{json, Value};
 
-pub fn calculate(
-    headers: &Value, 
-    bad_attachments: usize,
-    has_double_ext: bool,
-    total_psycho_words: usize,
-    html_anomalies: usize,
-    has_crypto: bool,
-    has_archive: bool,
-    is_encrypted_zip: bool,
-    has_pwd_keyword: bool,
-    has_macro: bool
-) -> Value {
+/// What the parser noticed on the way through the message — everything the
+/// score is made of, apart from the headers.
+///
+/// A struct rather than nine positional arguments: they are all counts and
+/// booleans, and at the call site nothing stopped two adjacent ones being
+/// swapped. Named fields make that impossible to write by accident.
+#[derive(Default)]
+pub struct Signals {
+    pub bad_attachments: usize,
+    pub has_double_ext: bool,
+    pub psycho_words: usize,
+    pub html_anomalies: usize,
+    pub has_crypto: bool,
+    pub has_archive: bool,
+    pub is_encrypted_zip: bool,
+    pub has_pwd_keyword: bool,
+    pub has_macro: bool,
+}
+
+pub fn calculate(headers: &Value, found: &Signals) -> Value {
+    let Signals {
+        bad_attachments,
+        has_double_ext,
+        psycho_words: total_psycho_words,
+        html_anomalies,
+        has_crypto,
+        has_archive,
+        is_encrypted_zip,
+        has_pwd_keyword,
+        has_macro,
+    } = *found;
     let mut score = 0;
     let mut triggers = Vec::new();
     

@@ -7,7 +7,7 @@ Provides the `eml.triage` capability.
 ## Core Features
 
 * **MIME Obfuscation Bypass:** Deep recursive traversal of nested `multipart` structures to uncover hidden or maliciously packed attachments.
-* **In-Memory Archive X-Ray:** Safe, zero-decompression inspection of archive headers (`.zip`, `.tar`, `.gz`). Identifies hidden executables, Office macros (`vbaProject.bin`), double extensions, and encrypted containers without the risk of ZIP bombs.
+* **In-Memory Archive X-Ray:** Safe, zero-decompression inspection of `.zip` containers (including `.docx`/`.xlsx`/`.docm`/`.xlsm`) — entry names are read from the central directory, never inflated, so a zip bomb has nothing to explode. Identifies hidden executables, Office macros (`vbaProject.bin`), double extensions, and encrypted containers. Other archives (`.rar`, `.7z`, `.tar`, `.gz`) are flagged as archives and scanned as raw bytes for tell-tale names, but are not opened.
 * **Authentication & Header Analysis:** Verifies SPF, DKIM, and DMARC status. Flags domain spoofing anomalies between `From` and `Reply-To` headers.
 * **IoC Extraction:** Automatically parses plain text and HTML bodies to extract IP addresses, URLs, email addresses, and cryptocurrency wallets (BTC, ETH, XMR).
 * **Heuristic Scoring Engine:** Generates an aggregated 0-100 Risk Score based on HTML anomalies (zero-font, transparent colors, display toggles) and social engineering triggers (urgency, panic, authoritative lures).

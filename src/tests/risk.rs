@@ -1,6 +1,7 @@
 //! How the points add up, and what the analyst is told they were for.
 
 use super::*;
+use crate::scoring::Signals;
 
 fn headers(spf: bool, dkim: bool, spoofed: bool) -> Value {
     json!({ "spf_pass": spf, "dkim_pass": dkim, "spoofed": spoofed })
@@ -20,7 +21,7 @@ fn keys_of(v: &Value) -> Vec<String> {
 }
 
 fn calc(h: &Value) -> Value {
-    crate::scoring::calculate(h, 0, false, 0, 0, false, false, false, false, false)
+    crate::scoring::calculate(h, &Signals::default())
 }
 
 #[test]
@@ -41,12 +42,12 @@ fn each_failed_check_carries_its_own_weight() {
 #[test]
 fn an_executable_attachment_outweighs_every_header() {
     let clean = headers(true, true, false);
-    let v = crate::scoring::calculate(&clean, 1, false, 0, 0, false, false, false, false, false);
+    let v = crate::scoring::calculate(&clean, &Signals { bad_attachments: 1, ..Default::default() });
     assert_eq!(score_of(&v), 40);
     assert_eq!(keys_of(&v), vec!["reasons.atts"]);
 
     // Two of them are worse than one.
-    let v = crate::scoring::calculate(&clean, 2, false, 0, 0, false, false, false, false, false);
+    let v = crate::scoring::calculate(&clean, &Signals { bad_attachments: 2, ..Default::default() });
     assert_eq!(score_of(&v), 80);
 }
 
@@ -55,19 +56,33 @@ fn an_executable_attachment_outweighs_every_header() {
 #[test]
 fn an_archive_with_its_password_is_decisive() {
     let clean = headers(true, true, false);
-    let v = crate::scoring::calculate(&clean, 0, false, 0, 0, false, true, false, true, false);
+    let v = crate::scoring::calculate(
+        &clean,
+        &Signals { has_archive: true, has_pwd_keyword: true, ..Default::default() },
+    );
     assert_eq!(score_of(&v), 100);
     assert!(keys_of(&v).contains(&"reasons.pwd_arc".to_string()));
 
     // The archive alone is not.
-    let v = crate::scoring::calculate(&clean, 0, false, 0, 0, false, true, false, false, false);
+    let v = crate::scoring::calculate(&clean, &Signals { has_archive: true, ..Default::default() });
     assert_eq!(score_of(&v), 0);
 }
 
 #[test]
 fn the_worst_message_still_scores_one_hundred() {
     let v = crate::scoring::calculate(
-        &headers(false, false, true), 3, true, 10, 2, true, true, true, true, true,
+        &headers(false, false, true),
+        &Signals {
+            bad_attachments: 3,
+            has_double_ext: true,
+            psycho_words: 10,
+            html_anomalies: 2,
+            has_crypto: true,
+            has_archive: true,
+            is_encrypted_zip: true,
+            has_pwd_keyword: true,
+            has_macro: true,
+        },
     );
     assert_eq!(score_of(&v), 100, "the score is a percentage, not a tally");
 }
@@ -78,7 +93,18 @@ fn the_worst_message_still_scores_one_hundred() {
 fn every_trigger_names_a_key_the_catalog_defines() {
     let defined = catalog_keys(include_str!("../../locales/en.toml"));
     let v = crate::scoring::calculate(
-        &headers(false, false, true), 2, true, 4, 1, true, true, true, true, true,
+        &headers(false, false, true),
+        &Signals {
+            bad_attachments: 2,
+            has_double_ext: true,
+            psycho_words: 4,
+            html_anomalies: 1,
+            has_crypto: true,
+            has_archive: true,
+            is_encrypted_zip: true,
+            has_pwd_keyword: true,
+            has_macro: true,
+        },
     );
     for k in keys_of(&v) {
         assert!(defined.contains(&k), "no catalog entry for {k}");

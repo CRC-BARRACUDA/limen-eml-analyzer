@@ -2,7 +2,7 @@
 name = "eml-analyzer"
 display_name = "EML Analyzer"
 description = "Deep static analysis and triage of .eml (email) files. Uncovers hidden payloads, bypasses MIME obfuscation, and scores threats using a SpamAssassin-lite heuristic engine."
-version = "0.3.2"
+version = "0.3.3"
 language = "native"
 entry = "eml_analyzer"
 abi = "native"

@@ -289,7 +289,7 @@ impl EmlAnalyzer {
             separator()
         ];
         
-        let cols = vec![t("atts.filename").into(), t("atts.size").into(), t("atts.hash").into(), t("atts.note").into()];
+        let cols = vec![t("atts.filename"), t("atts.size"), t("atts.hash"), t("atts.note")];
         let mut rows = Vec::new();
         let mut row_ids = Vec::new();
 
@@ -354,7 +354,21 @@ impl EmlAnalyzer {
         if hash.is_empty() { return window(t("ui.error"), vec![label(t("errors.not_found")).strong()]); }
         
         match host.call("osint.reputation", "check_hash", json!({ "hash": hash })) {
-            Ok(res) => res,
+            // The provider answers with a screen of its own — show it as it is.
+            Ok(res) if res.get("widgets").is_some() => res,
+            // ...or with nothing, which used to render as an empty window: the
+            // analyst clicked "Check OSINT" and the screen went blank, which
+            // reads as "clean" when it means "no answer".
+            Ok(res) if res.is_null() => notice(
+                self.view_atts(true, lang),
+                "warning",
+                t("errors.osint_empty"),
+            ),
+            // Anything else is data without a screen: show it rather than drop it.
+            Ok(res) => window(
+                t("menu.reputation"),
+                vec![label(res.to_string()).mono()],
+            ),
             Err(e) => window(t("ui.error"), vec![label(format!("OSINT: {}", e)).weak()]),
         }
     }

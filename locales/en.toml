@@ -73,6 +73,7 @@ fs_error = "Write error:"
 decode = "Decode error:"
 no_scan = "No message analyzed yet. Choose an .eml file and press Analyze."
 fs_cancelled = "Save cancelled."
+osint_empty = "The reputation provider returned nothing — that is not the same as clean."
 
 # What the analyst reads in the Note column. Written by the parser, which has
 # no locale, so it names one of these; `{}` is the name found inside the file.

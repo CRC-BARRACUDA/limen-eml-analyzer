@@ -3,10 +3,11 @@
 
 [package]
 name = "eml-analyzer"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 description = "Deep static analysis and triage of .eml files for Limen DFIR."
 repository = "https://github.com/CRC-BARRACUDA/limen-eml-analyzer"
+license = "GPL-3.0-or-later"
 
 [lib]
 name = "eml_analyzer"
