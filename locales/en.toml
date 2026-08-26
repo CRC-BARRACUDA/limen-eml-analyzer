@@ -14,6 +14,9 @@ back = "Back to Dashboard"
 triggers = "Risk Triggers"
 no_triggers = "No risk triggers detected."
 browse = "Browse..."
+error = "Error"
+output = "Output"
+strings = "Strings"
 simple_safe = "SAFE (Can be opened)"
 simple_warn = "CAUTION (Suspicious)"
 simple_danger = "FORBIDDEN (Malicious)"
@@ -34,6 +37,7 @@ dmarc = "DMARC"
 [iocs]
 title = "Indicators of Compromise"
 empty = "No IoCs found in text body."
+indicator = "Indicator"
 
 [atts]
 title = "Attachments"
@@ -69,3 +73,16 @@ fs_error = "Write error:"
 decode = "Decode error:"
 no_scan = "No message analyzed yet. Choose an .eml file and press Analyze."
 fs_cancelled = "Save cancelled."
+
+# What the analyst reads in the Note column. Written by the parser, which has
+# no locale, so it names one of these; `{}` is the name found inside the file.
+[notes]
+ok = "OK"
+exe = "SUSPICIOUS (Executable)"
+double_ext = "SUSPICIOUS (Double extension)"
+macro_format = "SUSPICIOUS (Macro-enabled format)"
+legacy_office = "WARNING (Legacy Office format)"
+enc_zip = "WARNING (Encrypted ZIP)"
+macro = "CRITICAL (Office macro detected)"
+hidden = "SUSPICIOUS (Hidden: {})"
+in_archive = "SUSPICIOUS (Archive contains: {})"

@@ -29,7 +29,7 @@ fn an_executable_attachment_is_called_out() {
     let v = parsed("exe", &with_attachment("setup.exe", b"MZ...", "spf=pass; dkim=pass"));
     let att = &v["attachments"][0];
     assert_eq!(att["filename"], json!("setup.exe"));
-    assert_eq!(att["note"], json!("SUSPICIOUS (Executable)"));
+    assert_eq!(att["note"], json!({ "key": "notes.exe" }));
     assert_eq!(att["size"], json!(5));
     assert_eq!(att["hash"].as_str().unwrap().len(), 32);
 }
@@ -39,20 +39,20 @@ fn an_executable_attachment_is_called_out() {
 #[test]
 fn a_double_extension_is_worth_the_whole_score() {
     let v = parsed("double", &with_attachment("invoice.pdf.exe", b"MZ", "spf=pass; dkim=pass"));
-    assert_eq!(v["attachments"][0]["note"], json!("SUSPICIOUS (Double Ext)"));
+    assert_eq!(v["attachments"][0]["note"], json!({ "key": "notes.double_ext" }));
     assert_eq!(v["scoring"]["score"], json!(100));
 }
 
 #[test]
 fn a_macro_enabled_document_is_not_treated_as_a_document() {
     let v = parsed("macro", &with_attachment("report.docm", b"PK\x03\x04", "spf=pass; dkim=pass"));
-    assert_eq!(v["attachments"][0]["note"], json!("SUSPICIOUS (Macro-enabled Format)"));
+    assert_eq!(v["attachments"][0]["note"], json!({ "key": "notes.macro_format" }));
 }
 
 #[test]
 fn an_encrypted_archive_is_recognised_by_its_flag() {
     let v = parsed("enczip", &with_attachment("archive.zip", &encrypted_zip(), "spf=pass; dkim=pass"));
-    assert_eq!(v["attachments"][0]["note"], json!("WARNING (Encrypted ZIP)"));
+    assert_eq!(v["attachments"][0]["note"], json!({ "key": "notes.enc_zip" }));
     let triggers = v["scoring"]["triggers"].to_string();
     assert!(triggers.contains("reasons.enc_zip"), "{triggers}");
 }

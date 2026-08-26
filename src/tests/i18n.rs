@@ -68,3 +68,48 @@ fn the_save_path_speaks_both_languages() {
     }
     assert_ne!(catalog().tr("uk", "errors.no_scan"), catalog().tr("en", "errors.no_scan"));
 }
+
+/// The note is the cell an analyst reads to decide what a file is, and it is
+/// written by a parser with no locale — so it names a key. Every key it can
+/// name must exist in both catalogs, and the two that carry a name found
+/// inside the file must keep the `{}` that name is put into.
+#[test]
+fn every_attachment_note_translates() {
+    const NOTES: [&str; 9] = [
+        "notes.ok",
+        "notes.exe",
+        "notes.double_ext",
+        "notes.macro_format",
+        "notes.legacy_office",
+        "notes.enc_zip",
+        "notes.macro",
+        "notes.hidden",
+        "notes.in_archive",
+    ];
+    for key in NOTES {
+        for lang in ["en", "uk"] {
+            let said = catalog().tr(lang, key);
+            assert_ne!(said, key, "{lang} has no note for {key}");
+            let carries_a_name = key.ends_with("hidden") || key.ends_with("in_archive");
+            assert_eq!(
+                said.contains("{}"),
+                carries_a_name,
+                "{lang}: {key} = {said:?} — the placeholder is wrong"
+            );
+        }
+    }
+}
+
+/// ...and the parser only ever names keys from that list.
+#[test]
+fn the_parser_names_no_note_the_catalog_lacks() {
+    let source = include_str!("../parser.rs");
+    let defined = catalog_keys(include_str!("../../locales/en.toml"));
+    let mut found = 0;
+    for chunk in source.split("\"key\": \"notes.").skip(1) {
+        let key = format!("notes.{}", chunk.split('"').next().unwrap_or(""));
+        assert!(defined.contains(&key), "parser writes {key}, no catalog entry");
+        found += 1;
+    }
+    assert!(found >= 9, "only found {found} notes in the parser");
+}

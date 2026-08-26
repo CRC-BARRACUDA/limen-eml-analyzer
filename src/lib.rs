@@ -104,7 +104,7 @@ impl EmlAnalyzer {
         let path = params.get("file_path").and_then(Value::as_str).unwrap_or("");
         
         if path.is_empty() {
-            return window("Error", vec![label(t("errors.empty")).strong()]);
+            return window(t("ui.error"), vec![label(t("errors.empty")).strong()]);
         }
 
         match parser::parse(path) {
@@ -118,7 +118,7 @@ impl EmlAnalyzer {
                 }
                 self.render_simple_summary(lang)
             },
-            Err(e) => window("Error", vec![label(e).strong()]),
+            Err(e) => window(t("ui.error"), vec![label(e).strong()]),
         }
     }
 
@@ -240,7 +240,7 @@ impl EmlAnalyzer {
             if iocs.is_empty() {
                 widgets.push(label(t("iocs.empty")).weak());
             } else {
-                let cols = vec!["Indicator".to_string()];
+                let cols = vec![t("iocs.indicator")];
                 let mut rows = Vec::new();
                 let mut row_ids = Vec::new();
                 
@@ -258,6 +258,26 @@ impl EmlAnalyzer {
             }
         }
         window(t("iocs.title"), widgets)
+    }
+
+    /// An attachment's note, as the analyst reads it.
+    ///
+    /// The parser has no locale, so it names a key and — where it found a name
+    /// inside the file — passes it along. `{}` in the translation is where that
+    /// name goes.
+    fn note_text(&self, note: Option<&Value>, lang: &str) -> String {
+        match note {
+            Some(n) if n.is_object() => {
+                let text = catalog().tr(lang, n.get("key").and_then(Value::as_str).unwrap_or(""));
+                match n.get("arg").and_then(Value::as_str) {
+                    Some(arg) => text.replace("{}", arg),
+                    None => text,
+                }
+            }
+            // A scan taken before this build, still held in the tab's state.
+            Some(Value::String(s)) => s.clone(),
+            _ => String::new(),
+        }
     }
 
     fn view_atts(&self, has_osint: bool, lang: &str) -> Value {
@@ -279,7 +299,7 @@ impl EmlAnalyzer {
                     att.get("filename").and_then(Value::as_str).unwrap_or("").to_string(),
                     att.get("size").and_then(Value::as_u64).unwrap_or(0).to_string(),
                     att.get("hash").and_then(Value::as_str).unwrap_or("").to_string(),
-                    att.get("note").and_then(Value::as_str).unwrap_or("").to_string(),
+                    self.note_text(att.get("note"), lang),
                 ]);
                 row_ids.push(i.to_string());
             }
@@ -303,16 +323,16 @@ impl EmlAnalyzer {
             let b64 = att.get("body_b64").and_then(Value::as_str).unwrap_or("");
             match STANDARD.decode(b64) {
                 Ok(bytes) => {
-                    let mut widgets = vec![label("Strings").heading(), separator()];
+                    let mut widgets = vec![label(t("ui.strings")).heading(), separator()];
                     let extracted = parser::extract_strings(&bytes);
                     let joined = extracted.into_iter().take(1000).collect::<Vec<String>>().join("\n");
                     widgets.push(label(joined).mono()); 
-                    window("Output", widgets)
+                    window(t("ui.output"), widgets)
                 },
-                Err(e) => window("Error", vec![label(format!("{} {}", t("errors.decode"), e)).strong()]),
+                Err(e) => window(t("ui.error"), vec![label(format!("{} {}", t("errors.decode"), e)).strong()]),
             }
         } else {
-            window("Error", vec![label(t("errors.not_found")).strong()])
+            window(t("ui.error"), vec![label(t("errors.not_found")).strong()])
         }
     }
 
@@ -331,11 +351,11 @@ impl EmlAnalyzer {
             } else { "" }
         } else { "" };
 
-        if hash.is_empty() { return window("Error", vec![label(t("errors.not_found")).strong()]); }
+        if hash.is_empty() { return window(t("ui.error"), vec![label(t("errors.not_found")).strong()]); }
         
         match host.call("osint.reputation", "check_hash", json!({ "hash": hash })) {
             Ok(res) => res,
-            Err(e) => window("Error", vec![label(format!("OSINT: {}", e)).weak()]),
+            Err(e) => window(t("ui.error"), vec![label(format!("OSINT: {}", e)).weak()]),
         }
     }
 
