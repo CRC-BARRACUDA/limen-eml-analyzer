@@ -88,3 +88,62 @@ fn strings_are_pulled_out_of_bytes_that_are_not_text() {
     assert!(found.contains(&"another string".to_string()), "{found:?}");
     assert!(!found.iter().any(|s| s == "tiny"), "runs under 5 are noise: {found:?}");
 }
+
+// ---- contributed: PDF links and the wider executable list ------------------ //
+
+/// A PDF is inert; the payload is one click past it.
+///
+/// That is the shape most current phishing takes — a clean-looking invoice whose
+/// only link fetches an archive — so the link is what gets reported.
+#[test]
+fn a_pdf_linking_to_an_archive_is_flagged() {
+    let pdf = b"%PDF-1.7\n<< /Type /Action /S /URI /URI (http://evil.test/invoice.zip) >>\ntrailer\n";
+    let v = parsed("pdflink", &with_attachment("invoice.pdf", pdf, "spf=pass"));
+    let note = &v["attachments"][0]["note"];
+    assert_eq!(note["key"], json!("notes.pdf_link"), "note was {note}");
+    assert!(
+        note["arg"].as_str().unwrap().contains("invoice.zip"),
+        "the note has to say which link: {note}"
+    );
+    // Reported as a link, not as a double extension — nothing here has two.
+    assert_ne!(v["attachments"][0]["note"]["key"], json!("notes.double_ext"));
+}
+
+/// The extension is matched at the end of the path, not anywhere in the URL.
+///
+/// Searching the whole URL reads a detached signature as the archive it signs,
+/// and a query that merely names a file as the file being served. A scanner that
+/// cries wolf on ordinary mail stops being read.
+#[test]
+fn an_ordinary_pdf_link_is_left_alone() {
+    for url in [
+        // Both of these are flagged by a plain `contains` over the whole URL.
+        "https://cdn.example.org/release/v1.zip.sig",
+        "https://example.org/a.pdf?attachment=payload.zip",
+        "https://example.org/files/report.pdf",
+        "https://example.org/docs/isolation-guide.html",
+    ] {
+        let pdf = format!("%PDF-1.7\n<< /S /URI /URI ({url}) >>\n");
+        let v = parsed("pdfok", &with_attachment("doc.pdf", pdf.as_bytes(), "spf=pass"));
+        assert_eq!(
+            v["attachments"][0]["note"]["key"],
+            json!("notes.ok"),
+            "{url} should not have been flagged: {}",
+            v["attachments"][0]["note"]
+        );
+    }
+}
+
+/// `.lnk`, `.hta` and `.cpl` run code and look like nothing much to a recipient.
+#[test]
+fn the_newer_executable_extensions_are_caught() {
+    for name in ["update.lnk", "report.hta", "settings.cpl"] {
+        let v = parsed("newexts", &with_attachment(name, b"whatever", "spf=pass"));
+        assert_eq!(
+            v["attachments"][0]["note"]["key"],
+            json!("notes.exe"),
+            "{name} was not treated as executable"
+        );
+        assert!(v["scoring"]["score"].as_u64().unwrap() >= 50, "{name} scored low");
+    }
+}

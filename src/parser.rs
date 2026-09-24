@@ -98,7 +98,12 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
         let lower_name = filename.to_lowercase();
         let dot_count = lower_name.matches('.').count();
         
-        let dangerous_exts = [".exe", ".bat", ".vbs", ".ps1", ".iso", ".scr", ".cmd", ".js", ".wsf", ".pif"];
+        // `.lnk` runs an arbitrary command with a chosen icon, `.hta` runs
+        // script through mshta outside the browser sandbox, and `.cpl` is a DLL
+        // that rundll32 loads on a double-click. All three are ordinary in
+        // current phishing and none of them look like a program to a recipient.
+        let dangerous_exts = [".exe", ".bat", ".vbs", ".ps1", ".iso", ".scr",
+                              ".cmd", ".js", ".wsf", ".pif", ".lnk", ".hta", ".cpl"];
         let office_exts = [".doc", ".xls", ".ppt", ".docm", ".xlsm", ".pptm", ".rtf"];
         
         let has_dangerous_ext = dangerous_exts.iter().any(|ext| lower_name.ends_with(ext));
@@ -107,6 +112,7 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
         
         let is_zip = lower_name.ends_with(".zip") || lower_name.ends_with(".docx") || lower_name.ends_with(".xlsx") || lower_name.ends_with(".docm") || lower_name.ends_with(".xlsm");
         let is_tar = lower_name.ends_with(".tar") || lower_name.ends_with(".gz") || lower_name.ends_with(".tgz");
+        let is_pdf = lower_name.ends_with(".pdf");
         
         if is_zip || lower_name.ends_with(".rar") || lower_name.ends_with(".7z") || is_tar {
             state.has_archive = true;
@@ -188,6 +194,29 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
                             }
                         }
                     }
+
+                    // A PDF that carries a link to something executable. The
+                    // PDF itself is inert; the payload is one click past it,
+                    // which is the shape most current phishing takes — so it is
+                    // reported as a link, not as a hidden extension.
+                    //
+                    // Matched on `/URI` so it is a link object rather than the
+                    // extension appearing in prose, and at the end of the path
+                    // rather than anywhere in the URL — so a detached signature
+                    // beside an archive (`v1.zip.sig`) and a query that merely
+                    // names one (`a.pdf?attachment=payload.zip`) are not read as
+                    // the link serving it.
+                    if is_pdf && sl.contains("/uri") && sl.contains("http") {
+                        if let Some(url) = linked_payload(&sl) {
+                            note = json!({ "key": "notes.pdf_link", "arg": url });
+                            state.bad_attachments += 1;
+                            // Not `has_double_ext`: nothing here has two
+                            // extensions, and saying so would put the wrong
+                            // reason on the score.
+                            found_in_zip = true;
+                        }
+                    }
+
                     if found_in_zip || state.bad_attachments > 0 { break; }
                 }
             }
@@ -221,6 +250,35 @@ fn process_part(part: &ParsedMail, state: &mut ParseState) {
     for subpart in &part.subparts {
         process_part(subpart, state);
     }
+}
+
+/// The first URL in `haystack` that points at something executable.
+///
+/// Matched at the **end of the path**, with the query and fragment cut off
+/// first. Searching the whole URL instead would read `release/v1.zip.sig` — a
+/// detached signature — as an archive, and `a.pdf?attachment=payload.zip` as a
+/// zip when the link serves a PDF.
+///
+/// Returns the URL itself, because the note is only worth reading if it says
+/// which link.
+fn linked_payload(haystack: &str) -> Option<String> {
+    const PAYLOAD: [&str; 11] = [
+        ".zip", ".rar", ".7z", ".exe", ".iso", ".msi", ".cab", ".lnk", ".bat",
+        ".vbs", ".ps1",
+    ];
+    for start in haystack.match_indices("http").map(|(i, _)| i) {
+        let url: String = haystack[start..]
+            .chars()
+            .take_while(|c| !c.is_whitespace() && !matches!(c, ')' | '>' | '"' | '\''))
+            .collect();
+        // The path only: a query string can carry anything and says nothing
+        // about what is served.
+        let path = url.split(['?', '#']).next().unwrap_or(&url);
+        if PAYLOAD.iter().any(|ext| path.ends_with(ext)) {
+            return Some(url);
+        }
+    }
+    None
 }
 
 pub fn extract_strings(body: &[u8]) -> Vec<String> {
