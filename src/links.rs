@@ -149,6 +149,38 @@ pub fn bare_address(header: &str) -> String {
     inner.trim().to_ascii_lowercase()
 }
 
+/// Whether an address hides a domain in the part **before** the `@`.
+///
+/// `cert.gov.ua@notify-secure.example` reads, at a glance and in a narrow
+/// column, as `cert.gov.ua` — the domain is right there in the text, and the
+/// part that says who actually sent it is the part nobody reads. The local part
+/// of a real address is a person or a role; it is not a domain, and a domain
+/// sitting in it is there to be misread.
+///
+/// Only the endings that are never anybody's name count. `com`, `net`, `org`,
+/// `gov`, `edu` and `mil` do not appear in `john.smith` or `o.brien`, while
+/// country codes do — `van.de.berg` is a surname and `anna.it` is a person, so
+/// a bare country code is not enough on its own. It has to arrive as a full
+/// two-label suffix: `mk.gov.ua`, `example.co.uk`.
+pub fn domain_in_local_part(address: &str) -> bool {
+    let local = match bare_address(address).split_once('@') {
+        Some((l, _)) => l.to_ascii_lowercase(),
+        None => return false,
+    };
+    if !local.contains('.') {
+        return false;
+    }
+    const NEVER_A_NAME: [&str; 6] = ["com", "net", "org", "gov", "edu", "mil"];
+    let labels: Vec<&str> = local.split('.').collect();
+    // Not the first label: `gov.example` is the trick, `gov` alone is a mailbox
+    // name a ministry might really use.
+    if labels[1..].iter().any(|l| NEVER_A_NAME.contains(l)) {
+        return true;
+    }
+    // Or a full two-label suffix at the end, which is a domain and nothing else.
+    labels.len() > 2 && TWO_LABEL.contains(&&*labels[labels.len() - 2..].join("."))
+}
+
 /// The domain part of an address, or "" if there is none.
 pub fn domain_of(address: &str) -> &str {
     address.split_once('@').map_or("", |(_, d)| d)

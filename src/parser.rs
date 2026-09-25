@@ -118,6 +118,15 @@ pub fn parse(path: &str) -> Result<Value, String> {
             // notice about an account, which is ordinary mail.
             credential_ask: state.credential_ask && state.has_link,
             impersonates_recipient: impersonation,
+            // `cert.gov.ua@notify-secure.example` — the domain is in the part
+            // nobody reads past. Checked on Reply-To as well: a reply address is
+            // where an answer actually goes.
+            domain_in_local_part: [
+                header_data.get("from").and_then(Value::as_str).unwrap_or(""),
+                header_data.get("reply_to").and_then(Value::as_str).unwrap_or(""),
+            ]
+            .iter()
+            .any(|h| links::domain_in_local_part(h)),
         },
     );
 

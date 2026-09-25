@@ -221,3 +221,75 @@ fn the_same_organisation_is_recognised_across_subdomains() {
     assert_ne!(links::registrable("mk.gov.ua"), links::registrable("kemnaker.go.id"));
 }
 
+/// A domain sitting in the part before the `@`.
+///
+/// `cert.gov.ua@notify-secure.example` reads as `cert.gov.ua` at a glance, in a
+/// mail client that shows the display name and truncates the rest. The domain
+/// is there to be misread; the part that says who sent it is the part that gets
+/// cut off.
+#[test]
+fn a_domain_before_the_at_sign_is_not_a_name() {
+    for address in [
+        "cert.gov.ua@notify-secure.example",
+        "mk.gov.ua@gmail.example",
+        "\"Support\" <support.microsoft.com@mail.example.ru>",
+        "billing.com@invoices.example",
+        "privat24.com.ua@secure-login.example",
+    ] {
+        assert!(links::domain_in_local_part(address), "{address}");
+    }
+}
+
+/// And a name that merely has a dot in it is a name.
+///
+/// This is where a rule like this goes wrong: `van.de.berg` is a surname,
+/// `anna.it` is a person, `o.brien` is most of Ireland. Only the labels that are
+/// never anybody's name count — com, net, org, gov, edu, mil — or a full
+/// two-label suffix, which is a domain and nothing else.
+#[test]
+fn an_ordinary_name_with_a_dot_is_left_alone() {
+    for address in [
+        "john.smith@example.org",
+        "Anna Boyko <anna.boyko@example.org>",
+        "o.brien@example.org",
+        "van.de.berg@example.nl",
+        "anna.it@example.org",
+        "v.petrenko@example.ua",
+        "info.desk@example.org",
+        "no-reply@example.org",
+        // The whole trick inverted: an ordinary mailbox at a government domain
+        // is not suspicious, it is the thing being impersonated.
+        "cert@cert.gov.ua",
+        // `gov` as a mailbox name on its own is a role, not a hidden domain.
+        "gov@example.org",
+    ] {
+        assert!(!links::domain_in_local_part(address), "{address} is an ordinary address");
+    }
+}
+
+/// It is read off the message, and off the reply address too — an answer goes
+/// where Reply-To says, not where From does.
+#[test]
+fn the_hidden_domain_is_scored_from_the_headers() {
+    let msg = String::from(
+        "From: \"CERT-UA\" <cert.gov.ua@notify-secure.example>\r\n\
+         To: triage@example.org\r\n\
+         Subject: Notice\r\n\
+         Authentication-Results: mx.example.org; spf=pass; dkim=pass; dmarc=pass\r\n\
+         Content-Type: text/plain\r\n\
+         \r\n\
+         Please read the attached notice.\r\n",
+    );
+    let v = parsed("localpart", &msg);
+    let triggers = v["scoring"]["triggers"].to_string();
+    assert!(triggers.contains("reasons.local_part_domain"), "{triggers}");
+
+    // The same message from an ordinary address trips nothing.
+    let clean = msg.replace("cert.gov.ua@notify-secure.example", "cert@cert.gov.ua");
+    let v = parsed("localpart_ok", &clean);
+    assert!(
+        !v["scoring"]["triggers"].to_string().contains("local_part_domain"),
+        "an ordinary address was flagged"
+    );
+    assert_eq!(v["scoring"]["score"], json!(0), "and it scores nothing at all");
+}

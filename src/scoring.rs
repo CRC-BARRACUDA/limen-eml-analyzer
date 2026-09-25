@@ -26,6 +26,8 @@ pub struct Signals {
     pub credential_ask: bool,
     /// It talks about the recipient's own mail domain but comes from another.
     pub impersonates_recipient: bool,
+    /// The sender's address carries a domain in the part before the `@`.
+    pub domain_in_local_part: bool,
 }
 
 pub fn calculate(headers: &Value, found: &Signals) -> Value {
@@ -43,6 +45,7 @@ pub fn calculate(headers: &Value, found: &Signals) -> Value {
         victim_in_link,
         credential_ask,
         impersonates_recipient,
+        domain_in_local_part,
     } = *found;
     let mut score = 0;
     let mut triggers = Vec::new();
@@ -126,6 +129,10 @@ pub fn calculate(headers: &Value, found: &Signals) -> Value {
     if impersonates_recipient {
         score += 20;
         triggers.push(json!({"key": "reasons.impersonation", "pts": 20}));
+    }
+    if domain_in_local_part {
+        score += 25;
+        triggers.push(json!({"key": "reasons.local_part_domain", "pts": 25}));
     }
     
     let final_score = if score > 100 { 100 } else { score };
