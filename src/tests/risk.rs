@@ -82,6 +82,10 @@ fn the_worst_message_still_scores_one_hundred() {
             is_encrypted_zip: true,
             has_pwd_keyword: true,
             has_macro: true,
+            cloaked_links: 1,
+            victim_in_link: true,
+            credential_ask: true,
+            impersonates_recipient: true,
         },
     );
     assert_eq!(score_of(&v), 100, "the score is a percentage, not a tally");
@@ -104,6 +108,10 @@ fn every_trigger_names_a_key_the_catalog_defines() {
             is_encrypted_zip: true,
             has_pwd_keyword: true,
             has_macro: true,
+            cloaked_links: 1,
+            victim_in_link: true,
+            credential_ask: true,
+            impersonates_recipient: true,
         },
     );
     for k in keys_of(&v) {

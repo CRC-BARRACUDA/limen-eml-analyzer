@@ -7,6 +7,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 mod headers;
 mod ioc;
+mod links;
 mod parser;
 mod scoring;
 
