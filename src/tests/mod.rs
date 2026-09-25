@@ -9,6 +9,7 @@ use base64::engine::general_purpose::STANDARD;
 mod auth;
 mod i18n;
 mod indicators;
+mod links;
 mod names;
 mod parse;
 mod risk;

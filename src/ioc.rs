@@ -8,7 +8,11 @@ pub fn extract(text: &str) -> Vec<String> {
         for cap in re.captures_iter(text) { results.insert(format!("IP: {}", &cap[0])); }
     }
     
-    if let Ok(re) = Regex::new(r"https?://[^\s/$.?#].[^\s]*") {
+    // Stops at whitespace and at the characters a URL is wrapped in — a quote,
+    // an angle bracket, a closing paren. Without them, a link lifted out of an
+    // `href="..."` keeps the quote and every later comparison is against a
+    // string that is not the URL.
+    if let Ok(re) = Regex::new("https?://[^\\s/$.?#][^\\s\"'<>)]*") {
         for cap in re.captures_iter(text) { results.insert(format!("URL: {}", &cap[0])); }
     }
     

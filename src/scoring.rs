@@ -17,6 +17,17 @@ pub struct Signals {
     pub is_encrypted_zip: bool,
     pub has_pwd_keyword: bool,
     pub has_macro: bool,
+    /// Links that carry another destination inside them.
+    pub cloaked_links: usize,
+    /// A link carrying the recipient's own address where only the page can
+    /// read it.
+    pub victim_in_link: bool,
+    /// The message asks for an account or a password, and offers a link.
+    pub credential_ask: bool,
+    /// It talks about the recipient's own mail domain but comes from another.
+    pub impersonates_recipient: bool,
+    /// The sender's address carries a domain in the part before the `@`.
+    pub domain_in_local_part: bool,
 }
 
 pub fn calculate(headers: &Value, found: &Signals) -> Value {
@@ -30,6 +41,11 @@ pub fn calculate(headers: &Value, found: &Signals) -> Value {
         is_encrypted_zip,
         has_pwd_keyword,
         has_macro,
+        cloaked_links,
+        victim_in_link,
+        credential_ask,
+        impersonates_recipient,
+        domain_in_local_part,
     } = *found;
     let mut score = 0;
     let mut triggers = Vec::new();
@@ -88,6 +104,35 @@ pub fn calculate(headers: &Value, found: &Signals) -> Value {
     if has_macro {
         score += 100;
         triggers.push(json!({"key": "reasons.macro", "pts": 100}));
+    }
+
+    // --- credential phishing: a message with no attachment at all ---------- //
+    //
+    // Scored in pieces rather than as one verdict, because each piece happens
+    // on its own in ordinary mail and together they do not. A link through a
+    // redirector is a newsletter; a link through a redirector, in a message
+    // asking you to confirm your mailbox, carrying your own address where only
+    // the landing page can read it, is a login page with your name already in
+    // the box.
+    if cloaked_links > 0 {
+        score += 25;
+        triggers.push(json!({"key": "reasons.cloaked", "pts": 25}));
+    }
+    if victim_in_link {
+        score += 40;
+        triggers.push(json!({"key": "reasons.victim_link", "pts": 40}));
+    }
+    if credential_ask {
+        score += 35;
+        triggers.push(json!({"key": "reasons.credential", "pts": 35}));
+    }
+    if impersonates_recipient {
+        score += 20;
+        triggers.push(json!({"key": "reasons.impersonation", "pts": 20}));
+    }
+    if domain_in_local_part {
+        score += 25;
+        triggers.push(json!({"key": "reasons.local_part_domain", "pts": 25}));
     }
     
     let final_score = if score > 100 { 100 } else { score };

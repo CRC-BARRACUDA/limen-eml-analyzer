@@ -5,6 +5,7 @@ pub fn analyze(parsed_mail: &ParsedMail) -> Value {
     let subject = parsed_mail.headers.get_first_value("Subject").unwrap_or_default();
     let from = parsed_mail.headers.get_first_value("From").unwrap_or_default();
     let reply_to = parsed_mail.headers.get_first_value("Reply-To").unwrap_or_default();
+    let to = parsed_mail.headers.get_first_value("To").unwrap_or_default();
     
     let spoofed = !reply_to.is_empty() && !from.contains(&reply_to);
     
@@ -16,6 +17,7 @@ pub fn analyze(parsed_mail: &ParsedMail) -> Value {
     json!({
         "subject": subject,
         "from": from,
+        "to": to,
         "reply_to": reply_to,
         "spoofed": spoofed,
         "spf_pass": spf,

@@ -64,6 +64,11 @@ enc_zip = "Encrypted ZIP archive found"
 pwd_arc = "CRITICAL: Archive + Password keyword found"
 double_ext = "CRITICAL: Double extension detected"
 macro = "CRITICAL: Office Macro detected"
+cloaked = "A link hides where it goes (destination listed under IoCs)"
+victim_link = "CRITICAL: a link carries your own address for the page to read"
+credential = "CRITICAL: the message asks you to confirm an account or password"
+impersonation = "Claims to be about your mail domain, sent from another"
+local_part_domain = "The sender's address hides a domain before the @"
 
 [errors]
 empty = "Path cannot be empty."
