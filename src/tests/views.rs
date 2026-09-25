@@ -80,3 +80,36 @@ fn osint_is_offered_only_when_a_provider_is_there() {
     assert!(!text_of(&b.view_iocs(false, "en")).contains("osint.reputation"));
     assert!(text_of(&b.view_iocs(true, "en")).contains("osint.reputation"));
 }
+
+/// An error screen is a screen you can leave.
+///
+/// Pressing Analyze with an empty path used to render the message and nothing
+/// else — no picker, no button, no way back to the one thing the tab is for.
+/// The only way on was to close the tab and open it again.
+#[test]
+fn an_error_still_offers_the_file_picker() {
+    let mut a = EmlAnalyzer::default();
+    for lang in ["en", "uk"] {
+        // Nothing typed.
+        let v = a.scan(&json!({ "file_path": "" }), lang);
+        let s = text_of(&v);
+        assert!(s.contains(&catalog().tr(lang, "errors.empty")), "{lang}: {s}");
+        assert!(s.contains("\"kind\":\"file\""), "{lang}: no picker on the error: {s}");
+        assert!(s.contains("\"method\":\"scan\""), "{lang}: no way to try again: {s}");
+
+        // A path that is not a message.
+        let v = a.scan(&json!({ "file_path": "/nonexistent/nowhere.eml" }), lang);
+        let s = text_of(&v);
+        assert!(s.contains("\"kind\":\"file\""), "{lang}: no picker after a bad file: {s}");
+    }
+}
+
+/// An error on something opened *from* a report goes back to that report —
+/// there is a scan to return to, and the picker would throw it away.
+#[test]
+fn an_error_inside_a_report_goes_back_to_it() {
+    let a = scanned("errback", BENIGN);
+    let s = text_of(&a.run_strings(&json!({ "id": "does-not-exist" }), "en"));
+    assert!(s.contains(&catalog().tr("en", "errors.not_found")), "{s}");
+    assert!(s.contains("\"method\":\"dashboard\""), "no way back to the report: {s}");
+}

@@ -81,6 +81,26 @@ impl EmlAnalyzer {
         )
     }
 
+    /// Something went wrong before there was anything to look at — an empty
+    /// path, a file that would not parse.
+    ///
+    /// It carries the file picker, not just the message. An error screen with
+    /// nothing on it is a dead end: the analyst has read the sentence, and the
+    /// only way back to the thing they came to do is to close the tab and open
+    /// it again.
+    fn error_view(&self, lang: &str, message: impl Into<String>) -> Value {
+        let t = |k: &str| catalog().tr(lang, k);
+        window(
+            t("ui.error"),
+            vec![
+                label(message.into()).strong(),
+                separator(),
+                file("file_path").label(t("ui.path")).browse(t("ui.browse")),
+                button(t("ui.scan"), "eml.triage", "scan").primary(),
+            ],
+        )
+    }
+
     /// Shown when a view that needs a parsed message is reached before there is
     /// one. `last_scan` stays `Null` until `scan` succeeds, and any method can
     /// be invoked at any time — a tab restored on start-up, `limen-cli run
@@ -100,12 +120,27 @@ impl EmlAnalyzer {
         )
     }
 
+    /// An error on something opened *from* a scan — a row's strings, a
+    /// reputation lookup. The message, and the way back to the report it came
+    /// from, which is where the analyst was.
+    fn dead_end(&self, lang: &str, message: impl Into<String>) -> Value {
+        let t = |k: &str| catalog().tr(lang, k);
+        window(
+            t("ui.error"),
+            vec![
+                label(message.into()).strong(),
+                separator(),
+                button(t("ui.back"), "eml.triage", "dashboard"),
+            ],
+        )
+    }
+
     fn scan(&mut self, params: &Value, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         let path = params.get("file_path").and_then(Value::as_str).unwrap_or("");
         
         if path.is_empty() {
-            return window(t("ui.error"), vec![label(t("errors.empty")).strong()]);
+            return self.error_view(lang, t("errors.empty"));
         }
 
         match parser::parse(path) {
@@ -119,7 +154,7 @@ impl EmlAnalyzer {
                 }
                 self.render_simple_summary(lang)
             },
-            Err(e) => window(t("ui.error"), vec![label(e).strong()]),
+            Err(e) => self.error_view(lang, e),
         }
     }
 
@@ -330,10 +365,10 @@ impl EmlAnalyzer {
                     widgets.push(label(joined).mono()); 
                     window(t("ui.output"), widgets)
                 },
-                Err(e) => window(t("ui.error"), vec![label(format!("{} {}", t("errors.decode"), e)).strong()]),
+                Err(e) => self.dead_end(lang, format!("{} {}", t("errors.decode"), e)),
             }
         } else {
-            window(t("ui.error"), vec![label(t("errors.not_found")).strong()])
+            self.dead_end(lang, t("errors.not_found"))
         }
     }
 
@@ -352,7 +387,9 @@ impl EmlAnalyzer {
             } else { "" }
         } else { "" };
 
-        if hash.is_empty() { return window(t("ui.error"), vec![label(t("errors.not_found")).strong()]); }
+        if hash.is_empty() {
+            return self.dead_end(lang, t("errors.not_found"));
+        }
         
         match host.call("osint.reputation", "check_hash", json!({ "hash": hash })) {
             // The provider answers with a screen of its own — show it as it is.
@@ -370,7 +407,7 @@ impl EmlAnalyzer {
                 t("menu.reputation"),
                 vec![label(res.to_string()).mono()],
             ),
-            Err(e) => window(t("ui.error"), vec![label(format!("OSINT: {}", e)).weak()]),
+            Err(e) => self.dead_end(lang, format!("OSINT: {e}")),
         }
     }
 
