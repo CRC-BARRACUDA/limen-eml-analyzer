@@ -54,11 +54,16 @@ impl Handler for EmlAnalyzer {
     fn invoke(&mut self, _cap: &str, method: &str, params: Value, host: &Host) -> Result<Value, RpcError> {
         let lang = host.locale();
         let has_osint = host.has_capability("osint.reputation");
+        // Optional companion, discovered per call rather than remembered: a
+        // report module installed while this tab is open should make the button
+        // appear on the next draw.
+        let has_report = host.has_capability("report.build");
 
         match method {
             "ui" => Ok(self.idle_view(&lang)),
             "scan" => Ok(self.scan(&params, &lang)),
-            "dashboard" => Ok(self.render_dashboard(has_osint, &lang)),
+            "dashboard" => Ok(self.render_dashboard(has_osint, has_report, &lang)),
+            "make_report" => Ok(self.make_report(host, &lang)),
             "view_iocs" => Ok(self.view_iocs(has_osint, &lang)),
             "view_atts" => Ok(self.view_atts(has_osint, &lang)),
             "check_reputation" => Ok(self.check_reputation(&params, host, &lang)),
@@ -67,6 +72,16 @@ impl Handler for EmlAnalyzer {
             other => Err(RpcError::new(rpc::METHOD_NOT_FOUND, format!("No method {}", other))),
         }
     }
+}
+
+/// One line of a report's summary, as `name: value`.
+///
+/// The name is taken as it is written for the screen, where several of these
+/// carry their own colon — `From:`. Left in, the line reads `From:: someone`,
+/// and a reader that splits it at the first colon shows a value beginning with
+/// the second.
+fn figure(name: &str, value: &str) -> String {
+    format!("{}: {value}", name.trim_end().trim_end_matches(':').trim_end())
 }
 
 impl EmlAnalyzer {
@@ -191,7 +206,7 @@ impl EmlAnalyzer {
         window(t("ui.title"), widgets)
     }
 
-    fn render_dashboard(&self, has_osint: bool, lang: &str) -> Value {
+    fn render_dashboard(&self, has_osint: bool, has_report: bool, lang: &str) -> Value {
         let t = |k: &str| catalog().tr(lang, k);
         
         let Some(scoring) = self.last_scan.get("scoring") else {
@@ -255,12 +270,167 @@ impl EmlAnalyzer {
         }
 
         widgets.push(separator());
-        widgets.push(row(vec![
+        let mut actions = vec![
             button(t("ui.view_iocs"), "eml.triage", "view_iocs"),
             button(t("ui.view_atts"), "eml.triage", "view_atts"),
-        ]));
+        ];
+        // Only while a report provider is loaded — a button that calls a
+        // capability nobody provides is one that answers with an error.
+        if has_report {
+            actions.push(button(t("ui.report"), "eml.triage", "make_report"));
+        }
+        widgets.push(row(actions));
 
         window(t("ui.title"), widgets)
+    }
+
+    /// Hand the analysis to whatever report provider is installed.
+    fn make_report(&self, host: &Host, lang: &str) -> Value {
+        let t = |k: &str| catalog().tr(lang, k);
+        let Some(spec) = self.report_spec(lang) else {
+            return self.error_view(lang, t("errors.no_scan"));
+        };
+        match host.call("report.build", "build", spec) {
+            // The provider's own screen — its preview, with the buttons that
+            // write the file.
+            Ok(v) if v.get("widgets").is_some() => v,
+            Ok(_) => window(t("ui.title"), vec![label(t("report.written")).strong()]),
+            Err(e) => window(
+                t("ui.title"),
+                vec![label(t("report.failed")).strong(), label(format!("{e}")).weak()],
+            ),
+        }
+    }
+
+    /// The last analysis as a report spec, or `None` if nothing was analysed.
+    ///
+    /// Separate from the call that sends it so it can be read in a test: what
+    /// goes into a report is the part worth pinning down, and the sending is a
+    /// line of plumbing.
+    ///
+    /// The document is the message as this module read it — the verdict and
+    /// what produced it, who it claims to be from and whether that was
+    /// authenticated, every attachment with its hash, and every indicator. It
+    /// is the thing attached to a ticket, so nothing is left for the reader to
+    /// go back to the tool for.
+    fn report_spec(&self, lang: &str) -> Option<Value> {
+        let t = |k: &str| catalog().tr(lang, k);
+        let scoring = self.last_scan.get("scoring")?;
+        let headers = self.last_scan.get("headers")?;
+        let score = scoring.get("score").and_then(Value::as_u64).unwrap_or(0);
+        let verdict = match score {
+            0..=30 => t("ui.score_low"),
+            31..=60 => t("ui.score_med"),
+            _ => t("ui.score_high"),
+        };
+        let field = |k: &str| headers.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let flag = |k: &str| {
+            if headers.get(k).and_then(Value::as_bool).unwrap_or(false) {
+                t("report.pass")
+            } else {
+                t("report.fail")
+            }
+        };
+        let hash = self
+            .last_scan
+            .get("eml_hash")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        // What identifies the message itself, and what was decided about it.
+        let mut sections = vec![json!({
+            "heading": t("headers.title"),
+            "columns": [t("report.field"), t("report.value")],
+            "rows": [
+                [t("headers.subject"), field("subject")],
+                [t("headers.from"), field("from")],
+                [t("report.reply_to"), field("reply_to")],
+                [t("report.to"), field("to")],
+                [t("headers.spf"), flag("spf_pass")],
+                [t("headers.dkim"), flag("dkim_pass")],
+                [t("headers.dmarc"), flag("dmarc_pass")],
+                [t("report.hash"), hash.clone()],
+            ],
+        })];
+
+        // Why it scored what it scored, worst first — the order somebody reads
+        // a verdict in.
+        let mut triggers: Vec<(u64, String)> = scoring
+            .get("triggers")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .map(|tr| {
+                        (
+                            tr.get("pts").and_then(Value::as_u64).unwrap_or(0),
+                            t(tr.get("key").and_then(Value::as_str).unwrap_or("")),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        triggers.sort_by_key(|(pts, _)| std::cmp::Reverse(*pts));
+        if !triggers.is_empty() {
+            sections.push(json!({
+                "heading": t("ui.triggers"),
+                "columns": [t("report.points"), t("report.reason")],
+                "rows": triggers.iter()
+                    .map(|(pts, why)| vec![format!("+{pts}"), why.clone()])
+                    .collect::<Vec<_>>(),
+            }));
+        }
+
+        let atts = self.last_scan.get("attachments").and_then(Value::as_array);
+        if let Some(atts) = atts.filter(|a| !a.is_empty()) {
+            sections.push(json!({
+                "heading": t("atts.title"),
+                "columns": [t("atts.filename"), t("atts.size"), t("atts.hash"), t("atts.note")],
+                "rows": atts.iter().map(|a| vec![
+                    a.get("filename").and_then(Value::as_str).unwrap_or("").to_string(),
+                    a.get("size").and_then(Value::as_u64).unwrap_or(0).to_string(),
+                    a.get("hash").and_then(Value::as_str).unwrap_or("").to_string(),
+                    self.note_text(a.get("note"), lang),
+                ]).collect::<Vec<_>>(),
+            }));
+        }
+
+        if let Some(iocs) = self.last_scan.get("iocs").and_then(Value::as_array) {
+            if !iocs.is_empty() {
+                sections.push(json!({
+                    "heading": t("iocs.title"),
+                    "columns": [t("iocs.indicator")],
+                    "rows": iocs.iter()
+                        .filter_map(Value::as_str)
+                        .map(|i| vec![i.to_string()])
+                        .collect::<Vec<_>>(),
+                }));
+            }
+        }
+
+        let attachments = self.last_scan.get("attachments").and_then(Value::as_array).map_or(0, Vec::len);
+        let indicators = self.last_scan.get("iocs").and_then(Value::as_array).map_or(0, Vec::len);
+        Some(json!({
+            "title": t("report.title"),
+            "subtitle": field("subject"),
+            // Filed under the message's own hash: two copies of one phishing
+            // run have the same subject and different files, and the hash is
+            // what a ticket refers to.
+            "file_name": format!("eml_{}", hash.chars().take(12).collect::<String>()),
+            "format": "view",
+            // `name: value`, with exactly one colon: several of these labels
+            // are the dashboard's, where they are written with their own — and
+            // "From:: someone" is what a second one looks like once the report
+            // splits the line to lay it out.
+            "summary": [
+                figure(&t("ui.score"), &format!("{score}/100 — {verdict}")),
+                figure(&t("atts.title"), &attachments.to_string()),
+                figure(&t("iocs.title"), &indicators.to_string()),
+                figure(&t("headers.from"), &field("from")),
+            ],
+            "charts": [],
+            "sections": sections,
+        }))
     }
 
     fn view_iocs(&self, has_osint: bool, lang: &str) -> Value {

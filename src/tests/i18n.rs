@@ -31,7 +31,7 @@ fn no_rendered_key_falls_through_to_itself() {
         for v in [
             a.idle_view(lang),
             a.render_simple_summary(lang),
-            a.render_dashboard(true, lang),
+            a.render_dashboard(true, false, lang),
             a.view_iocs(true, lang),
             a.view_atts(true, lang),
             cold.no_scan_view(lang),

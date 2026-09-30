@@ -18,8 +18,8 @@ fn no_view_panics_before_a_scan() {
             a.idle_view(lang),
             a.no_scan_view(lang),
             a.render_simple_summary(lang),
-            a.render_dashboard(false, lang),
-            a.render_dashboard(true, lang),
+            a.render_dashboard(false, false, lang),
+            a.render_dashboard(true, false, lang),
             a.view_iocs(false, lang),
             a.view_atts(false, lang),
         ] {
@@ -31,7 +31,7 @@ fn no_view_panics_before_a_scan() {
 /// A dead end is only fair if it is also the way out.
 #[test]
 fn the_cold_dashboard_asks_for_a_file() {
-    let v = EmlAnalyzer::default().render_dashboard(false, "en");
+    let v = EmlAnalyzer::default().render_dashboard(false, false, "en");
     let s = text_of(&v);
     assert!(s.contains(&catalog().tr("en", "errors.no_scan")), "{s}");
     assert!(s.contains("\"kind\":\"file\""), "the picker is on the screen: {s}");
@@ -41,7 +41,7 @@ fn the_cold_dashboard_asks_for_a_file() {
 #[test]
 fn a_scanned_message_reaches_the_dashboard() {
     let a = scanned("view_dash", &with_attachment("setup.exe", b"MZ", "spf=fail; dkim=fail"));
-    let s = text_of(&a.render_dashboard(false, "en"));
+    let s = text_of(&a.render_dashboard(false, false, "en"));
     assert!(s.contains("100/100"), "{s}");
     assert!(s.contains("reasons.atts") || s.contains("Suspicious/executable"), "{s}");
     assert!(s.contains("Invoice"), "the subject is on the screen: {s}");

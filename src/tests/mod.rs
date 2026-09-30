@@ -12,6 +12,7 @@ mod indicators;
 mod links;
 mod names;
 mod parse;
+mod report;
 mod risk;
 mod views;
 
