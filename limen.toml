@@ -2,7 +2,7 @@
 name = "eml-analyzer"
 display_name = "EML Analyzer"
 description = "Deep static analysis and triage of .eml (email) files. Uncovers hidden payloads, bypasses MIME obfuscation, and scores threats using a SpamAssassin-lite heuristic engine."
-version = "0.6.0"
+version = "0.7.0"
 language = "native"
 entry = "eml_analyzer"
 abi = "native"
@@ -15,6 +15,9 @@ capabilities = ["eml.triage"]
 
 [optional.capabilities]
 "osint.reputation" = ">=0.1"
+# When a report provider is installed, a "Make Report" action appears on the
+# dashboard. Optional: the analysis stands on its own without it.
+"report.build" = ">=0.1"
 
 [permissions]
 filesystem = ["<user-selected>"]
