@@ -85,3 +85,45 @@ fn extract_domain(url: &str) -> Option<&str> {
     let without_proto = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")).unwrap_or(url);
     without_proto.split('/').next()
 }
+
+/// An indicator as the list shows it, taken apart: `("URL", "https://…")`.
+///
+/// The list carries each one as `Kind: value` so it reads at a glance; what is
+/// pasted into a search box or a ticket is the value alone.
+pub fn parts(ioc: &str) -> (&str, &str) {
+    ioc.split_once(": ").unwrap_or(("", ioc))
+}
+
+/// The value, written so that nothing it is pasted into makes a link of it.
+///
+/// An indicator is passed on — into a ticket, a chat, a mail to the people it
+/// was aimed at — and every one of those turns `http://evil.test` into
+/// something one slip of the hand opens. So the scheme becomes `hxxp`, and the
+/// dots of the host `[.]`: still readable, still searchable, no longer live.
+/// A path keeps its dots — it is the host that makes a link. A wallet address
+/// was never one, and comes back as it is.
+pub fn defanged(ioc: &str) -> String {
+    let (kind, value) = parts(ioc);
+    match kind {
+        "IP" => value.replace('.', "[.]"),
+        "Email" => value.replace('@', "[@]").replace('.', "[.]"),
+        "URL" | "Redirect" => {
+            let (scheme, rest) = match value.split_once("://") {
+                Some((s, r)) => (Some(s), r),
+                None => (None, value),
+            };
+            let host_ends = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+            let (host, tail) = rest.split_at(host_ends);
+            let host = host.replace('.', "[.]");
+            match scheme {
+                // `http` and `https`, however they were capitalised.
+                Some(s) if s.len() >= 4 && s[..4].eq_ignore_ascii_case("http") => {
+                    format!("hxxp{}://{host}{tail}", &s[4..])
+                }
+                Some(s) => format!("{s}://{host}{tail}"),
+                None => format!("{host}{tail}"),
+            }
+        }
+        _ => value.to_string(),
+    }
+}

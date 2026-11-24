@@ -2,7 +2,7 @@
 name = "eml-analyzer"
 display_name = "EML Analyzer"
 description = "Deep static analysis and triage of .eml (email) files. Uncovers hidden payloads, bypasses MIME obfuscation, and scores threats using a SpamAssassin-lite heuristic engine."
-version = "0.7.0"
+version = "0.8.0"
 language = "native"
 entry = "eml_analyzer"
 abi = "native"
@@ -21,3 +21,6 @@ capabilities = ["eml.triage"]
 
 [permissions]
 filesystem = ["<user-selected>"]
+# Copying an indicator: on Linux and macOS the clipboard is reached through the
+# desktop's own tool (wl-copy, xclip, xsel; pbcopy). Nothing else is spawned.
+subprocess = true

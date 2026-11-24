@@ -7,6 +7,7 @@ use crate::*;
 use base64::engine::general_purpose::STANDARD;
 
 mod auth;
+mod copying;
 mod i18n;
 mod indicators;
 mod links;

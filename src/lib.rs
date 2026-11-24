@@ -5,6 +5,7 @@ use limen_sdk_rust::ui::{button, file, label, menu_item, notice, row, separator,
 use limen_sdk_rust::{export_module, json, rpc, Catalog, Handler, Host, RpcError, Value};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
+mod clipboard;
 mod headers;
 mod ioc;
 mod links;
@@ -65,6 +66,7 @@ impl Handler for EmlAnalyzer {
             "dashboard" => Ok(self.render_dashboard(has_osint, has_report, &lang)),
             "make_report" => Ok(self.make_report(host, &lang)),
             "view_iocs" => Ok(self.view_iocs(has_osint, &lang)),
+            "copy_ioc" => Ok(self.copy_ioc(&params, has_osint, host, &lang)),
             "view_atts" => Ok(self.view_atts(has_osint, &lang)),
             "check_reputation" => Ok(self.check_reputation(&params, host, &lang)),
             "save_file" => Ok(self.save_file(&params, host, &lang)),
@@ -449,21 +451,59 @@ impl EmlAnalyzer {
                 let cols = vec![t("iocs.indicator")];
                 let mut rows = Vec::new();
                 let mut row_ids = Vec::new();
-                
+                let mut menus = Vec::new();
+
                 for (i, ioc) in iocs.iter().enumerate() {
                     let val = ioc.as_str().unwrap_or("");
                     rows.push(vec![val.to_string()]);
                     row_ids.push(i.to_string());
+
+                    // Every indicator can be copied — it is there to be taken
+                    // somewhere else. The defanged copy is offered where there
+                    // is something to defang: a wallet address was never a link.
+                    let mut menu = vec![menu_item(t("menu.copy"), "eml.triage", "copy_ioc")];
+                    if ioc::defanged(val) != ioc::parts(val).1 {
+                        menu.push(
+                            menu_item(t("menu.copy_defanged"), "eml.triage", "copy_ioc")
+                                .args(json!({ "defang": true })),
+                        );
+                    }
+                    if has_osint {
+                        menu.push(menu_item(t("menu.reputation"), "osint.reputation", "check_hash"));
+                    }
+                    menus.push(menu);
                 }
-                
-                let mut tbl = table(cols, rows).row_ids(row_ids);
-                if has_osint {
-                    tbl = tbl.row_menu(vec![menu_item(t("menu.reputation"), "osint.reputation", "check_hash")]);
-                }
-                widgets.push(tbl);
+
+                widgets.push(table(cols, rows).row_ids(row_ids).row_menus(menus));
             }
         }
         window(t("iocs.title"), widgets)
+    }
+
+    /// Put one indicator on the clipboard — its value, without the `URL:` the
+    /// list labels it with, and defanged if that was asked for — and say whether
+    /// it got there. `params`: `{ id, defang? }`.
+    fn copy_ioc(&self, params: &Value, has_osint: bool, host: &Host, lang: &str) -> Value {
+        let t = |k: &str| catalog().tr(lang, k);
+        let id = params.get("id").and_then(Value::as_str).unwrap_or("");
+        let defang = params.get("defang").and_then(Value::as_bool).unwrap_or(false);
+        let ioc = id
+            .parse::<usize>()
+            .ok()
+            .and_then(|i| self.last_scan.get("iocs")?.as_array()?.get(i)?.as_str());
+        let Some(ioc) = ioc else {
+            return notice(self.view_iocs(has_osint, lang), "error", t("errors.not_found"));
+        };
+        let text = if defang { ioc::defanged(ioc) } else { ioc::parts(ioc).1.to_string() };
+        if clipboard::copy_to_clipboard(&text) {
+            // What kind was copied, not what it was: the log is not where a
+            // phishing link should be written out a second time.
+            host.log(&format!("eml: copied an indicator ({})", ioc::parts(ioc).0));
+            let said = if defang { t("notice.copied_defanged") } else { t("notice.copied") };
+            notice(self.view_iocs(has_osint, lang), "ok", said)
+        } else {
+            notice(self.view_iocs(has_osint, lang), "error", t("notice.no_clipboard"))
+        }
     }
 
     /// An attachment's note, as the analyst reads it.
