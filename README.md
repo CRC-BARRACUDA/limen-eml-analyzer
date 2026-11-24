@@ -26,6 +26,7 @@ Provides the `eml.triage` capability.
 | `ui` | The landing view: a native File Picker with drag-and-drop support. |
 | `dashboard` | Visual report rendering the final Risk Score and a detailed breakdown of triggered heuristics. |
 | `view_iocs` / `view_atts` | Interactive data tables for extracted IoCs and attachments with contextual actions (e.g., Save to disk, Extract Strings). |
+| `copy_ioc` | Copies one indicator to the clipboard — its value alone, or defanged (`hxxps://evil[.]test/…`) so that nothing it is pasted into makes a link of it. On the right-click menu of every indicator. |
 | `check_reputation` | Cross-module RPC. Forwards extracted hashes or IoCs to `osint.reputation` (if installed) for external threat intelligence checks. |
 
 ## Permissions

@@ -21,3 +21,6 @@ capabilities = ["eml.triage"]
 
 [permissions]
 filesystem = ["<user-selected>"]
+# Copying an indicator: on Linux and macOS the clipboard is reached through the
+# desktop's own tool (wl-copy, xclip, xsel; pbcopy). Nothing else is spawned.
+subprocess = true

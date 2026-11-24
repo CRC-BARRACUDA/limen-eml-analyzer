@@ -52,6 +52,14 @@ save = "Save to disk"
 strings = "Extract Strings"
 reputation = "Check OSINT"
 check_eml = "Check EML Hash"
+copy = "Copy"
+copy_defanged = "Copy defanged"
+
+# Passing notices, said in the corner.
+[notice]
+copied = "Copied to the clipboard."
+copied_defanged = "Copied to the clipboard, defanged."
+no_clipboard = "Nothing was copied: no clipboard tool is available."
 
 [reasons]
 spf = "SPF check failed"
